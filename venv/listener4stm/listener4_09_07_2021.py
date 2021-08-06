@@ -70,8 +70,6 @@ class listener:
             pass
         self.file.close()
         self.ser.close()
-        # дописать проверку сериал через вайл и закрыть его когда тред закрыт, и файл тоже
-        # возвращать 0 или 1 и по 1 закрывать всю прогу
 
     def _serialThread(self):
         # Просто читаю ВКОМ последовательно и пишу в файл без буферов и тп
@@ -80,6 +78,7 @@ class listener:
         count = 0
         starttime = 0
         previoustime = 0
+        stmstarttime, stmthoutime = 0, 0
         while True:
             if self._stopflag:
                 break
@@ -90,31 +89,23 @@ class listener:
                     curtime = perf_counter()
                     if count == 0:
                         starttime = curtime
+                        # stmstarttime = int.from_bytes(line[4:8], "little")
                     deltat = curtime - previoustime
                     previoustime = curtime
                     count += 1
-                    # line2 = str(count) + ": Calculated deltaT : " +str(deltat)+ "  "
                     line2 = " ".join([str(count), ": Calculated deltaT :", str(deltat), " "])
-                    # line2 = f"{str(count)} : Calculated deltaT : {str(deltat)} "
                     if count > 999:
                         deltatthou = curtime - starttime
+                        stmthoutime = int.from_bytes(line[4:8], "little")
+                        stmdeltathou = stmthoutime-stmstarttime
+                        stmstarttime = stmthoutime
                         count = 0
                         starttime = 0
-                        # line3 = "****1000**** " + str(deltatthou) + " ************\n\n"
-                        line3 = " ".join(["****1000****", str(deltatthou), "************\n\n"])
+                        # line3 = " ".join([ "\n\n****1000****", str(deltatthou), "************\n"])
+                        line3 = " ".join(["\n\n****1000 delta****", str(deltatthou), "***stm delta***", str(stmdeltathou),"************\n"])
                         print(line3)
-                        if self.toFile:
-                            try:
-                                self.write(line3)
-                            except Exception as e:
-                                print('Error writing to file: ', e)
-                # line2 = ":".join("{:02x}".format(c) for c in line)
-                # print(line2)
-                # line2 = line2+ str(int.from_bytes(line[:2], "little")) + ": Time (us): " + str(int.from_bytes(line[4:8], "little")) + " Value: " + str(
-                #     int.from_bytes(line[2:4], "little")) + "\n"  # вот это вот может сломаться
-                line2 = " ".join([line2, str(int.from_bytes(line[:2], "little")), ": Time (us):", str(int.from_bytes(line[4:8], "little")), "Value:", str(int.from_bytes(line[2:4], "little")), "\n"])
-                # line2 = f"{line2} {str(int.from_bytes(line[:2], 'little'))} : Time (us): {str(int.from_bytes(line[4:8], 'little'))} Value: {str(int.from_bytes(line[2:4], 'little'))} \n"
-                # print(line2)
+                        line2 = " ".join([line2, line3])
+                line2 = " ".join([str(int.from_bytes(line[:2], "little")), ": Time (us):", str(int.from_bytes(line[4:8], "little")), "Value:", str(int.from_bytes(line[2:4], "little")), line2, "\n"])
                 if self.toFile:
                     try:
                         self.write(line2)
