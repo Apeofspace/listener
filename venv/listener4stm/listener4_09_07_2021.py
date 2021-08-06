@@ -2,7 +2,7 @@ import serial
 import serial.tools.list_ports
 import threading
 import datetime
-from time import perf_counter
+from time import perf_counter, time_ns
 
 
 class listener:
@@ -89,7 +89,6 @@ class listener:
                     curtime = perf_counter()
                     if count == 0:
                         starttime = curtime
-                        # stmstarttime = int.from_bytes(line[4:8], "little")
                     deltat = curtime - previoustime
                     previoustime = curtime
                     count += 1
