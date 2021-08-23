@@ -1,8 +1,7 @@
 import serial
 import serial.tools.list_ports
-from queue import Queue
+from queue import Queue, Full
 from threading import Thread
-# import datetime
 from time import perf_counter
 
 
@@ -10,7 +9,7 @@ class listenerThread(Thread):
     def __init__(self, queue, baud=500000):
         self.queue = queue
         self._stopflag = True
-        self.baud = baud #doesn't matter for vCOM
+        self.baud = baud  # doesn't matter for vCOM
         # Connect to COM
         p = self.autoFindSerialPort()
         if p is not None:
@@ -21,7 +20,7 @@ class listenerThread(Thread):
                 print('Не удалось подключиться к порту: {}\n'.format(e))
                 return
         # Start thread
-        super().__init__(target=self.loop, daemon=True, name='listener_thread')
+        super().__init__(daemon=True, name='listener_thread')
 
     def autoFindSerialPort(self):
         stms = []
@@ -45,10 +44,10 @@ class listenerThread(Thread):
     def stop(self):
         self._stopflag = True
 
-    def loop(self):
+    def run(self):
         # Read COM, put to Queue
         self._stopflag = False
-        previoustime = perf_counter()
+        # previoustime = perf_counter()
         while True:
             if self._stopflag:
                 self.ser.close()
@@ -62,29 +61,29 @@ class listenerThread(Thread):
                 # Order: count, time, value
                 data = [(int.from_bytes(line[:2], "little")), (int.from_bytes(line[4:8], "little")),
                         (int.from_bytes(line[2:4], "little"))]
-                self.queue.put(data)
+                try:
+                    self.queue.put(data, block=True, timeout=0.5)
+                except Full:
+                    print("Очередь полна, что-то пошло не так! Закрыть поток!")
+                    self.stop()
             except Exception as e:
                 print('Error reading/decoding line: ', e)
 
 
 class exportThread(Thread):
-    #Parent class
+    # Parent class
     def __init__(self, queue):
         self.queue = queue
         self._stopflag = False
         # Start thread
-        super().__init__(target=self.loop, daemon=True, name='listener_thread')
-
-    def loop(self):
-        pass
-         #Overwrite this in children
+        super().__init__(daemon=True, name='export_thread')
 
     def stop(self):
         self._stopflag = True
 
 
 class exportExcelThread(exportThread):
-    def loop(self):
+    def run(self):
         while True:
             if self._stopflag:
                 break
@@ -92,11 +91,11 @@ class exportExcelThread(exportThread):
             self.queue.task_done()
 
 
-
-
-q = Queue()
+q = Queue(maxsize=100000)
 listener = listenerThread(q)
 exporter = exportExcelThread(q)
 listener.start()
 exporter.start()
 input()
+listener.stop()
+exporter.stop()
