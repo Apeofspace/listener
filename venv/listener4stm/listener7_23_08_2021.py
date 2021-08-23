@@ -4,6 +4,7 @@ from queue import Queue, Full
 from threading import Thread
 from time import perf_counter
 import xlsxwriter
+import datetime
 
 
 class listenerThread(Thread):
@@ -79,16 +80,20 @@ class exportThread(Thread):
     def __init__(self, queue):
         self.queue = queue
         self._stopflag = False
+        self.filename = None
         # Start thread
         super().__init__(daemon=True, name='export_thread')
 
     def stop(self):
         self._stopflag = True
 
+    # def filename(self):
+    #     return self.filename()
 
 class exportExcelThread(exportThread):
     def run(self):
-        self.workbook = xlsxwriter.Workbook('hello.xlsx')
+        self.filename = "Data_{}.xlsx".format(datetime.datetime.now().strftime("%Y_%m_%d-%H%M%S"))
+        self.workbook = xlsxwriter.Workbook(self.filename)
         self.worksheet = self.workbook.add_worksheet()
         self.worksheet.write('A1', 'Count')
         self.worksheet.write('B1', 'Time (microseconds)')
@@ -96,9 +101,7 @@ class exportExcelThread(exportThread):
         row = 1
         while True:
             if self._stopflag:
-                # self.workbook.close()
                 break
-            # print(self.queue.get())
             column = 0
             for item in self.queue.get():
                 self.worksheet.write(row,column,item)
@@ -111,12 +114,17 @@ class exportExcelThread(exportThread):
         self.workbook.close()
 
 
+
+
 q = Queue(maxsize=100000)
 listener = listenerThread(q)
 exporter = exportExcelThread(q)
 listener.start()
 exporter.start()
+print('Запись в файл: {}'.format(exporter.filename))
+print('Потоки запущены. Нажмите любую клавишу для остановки...')
 input()
+print('Остановка...')
 listener.stop()
 exporter.stop()
 while(exporter.is_alive() or listener.is_alive()):
