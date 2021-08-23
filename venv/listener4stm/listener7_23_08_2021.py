@@ -3,9 +3,13 @@ import serial.tools.list_ports
 from queue import Queue, Full
 from threading import Thread
 from time import perf_counter
+import xlsxwriter
 
 
 class listenerThread(Thread):
+    # Можно сделать, чтобы он принимал не одну queue, а список. и писал в каждую из них,
+    # для того, чтобы можно было сделать такое же количество тредов для записи,
+    # хотя это немного костыльно
     def __init__(self, queue, baud=500000):
         self.queue = queue
         self._stopflag = True
@@ -84,11 +88,27 @@ class exportThread(Thread):
 
 class exportExcelThread(exportThread):
     def run(self):
+        self.workbook = xlsxwriter.Workbook('hello.xlsx')
+        self.worksheet = self.workbook.add_worksheet()
+        self.worksheet.write('A1', 'Count')
+        self.worksheet.write('B1', 'Time (microseconds)')
+        self.worksheet.write('C1', 'Value')
+        row = 1
         while True:
             if self._stopflag:
+                # self.workbook.close()
                 break
-            print(self.queue.get())
+            # print(self.queue.get())
+            column = 0
+            for item in self.queue.get():
+                self.worksheet.write(row,column,item)
+                column+=1
+            row+=1 #не возникнет ли проблем при больших числах?
             self.queue.task_done()
+
+    def stop(self):
+        super().stop()
+        self.workbook.close()
 
 
 q = Queue(maxsize=100000)
@@ -99,3 +119,5 @@ exporter.start()
 input()
 listener.stop()
 exporter.stop()
+while(exporter.is_alive() or listener.is_alive()):
+    pass
