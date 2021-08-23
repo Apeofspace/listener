@@ -2,7 +2,7 @@ import serial
 import serial.tools.list_ports
 import threading
 import datetime
-from time import perf_counter, time_ns
+from time import perf_counter
 
 
 class listener:

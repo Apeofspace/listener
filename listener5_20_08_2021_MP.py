@@ -1,3 +1,4 @@
+# import multiprocessing
 import serial
 import serial.tools.list_ports
 from multiprocessing import Process
@@ -52,8 +53,40 @@ class listenerSerial(Process):
             print(self.i)
             time.sleep(0.25)
 
+    def stop(self):
+        self.stopflag = True
 
-with listenerSerial() as listener1:
-    listener1.run()
-input()
-print("sucks")
+
+if __name__ == '__main__':
+    # with listenerSerial() as listener1:
+    #     listener1.start()
+    #     pass
+    l1 = listenerSerial()
+    l1.start()
+
+# def loop():
+#     i = 0
+#     while (True):
+#         i+= 1
+#         print(i)
+#         time.sleep(0.25)
+
+# listener1 = listenerSerial()
+# listener1.start()
+# input()
+# listener1.stop()
+# print("sucks")
+
+# if __name__ == '__main__':
+#     multiprocessing.freeze_support()
+#     test1= Process(target = loop, daemon=True)
+#     test2= Process(target = loop, daemon=True)
+#     print(test1, test1.is_alive())
+#     test1.start()
+#     test1.join()
+#     # time.sleep(0.5)
+#     test2.start()
+#     test2.join()
+#     print(test1, test1.is_alive())
+#     input()
+#     print(test1, test1.is_alive())
