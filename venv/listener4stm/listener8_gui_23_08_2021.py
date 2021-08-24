@@ -18,7 +18,8 @@ class GUIwrap:
         self.root.title("LIR Listener")
 
         #лейбл
-        self.label = tkinter.Label(self.root, text="360",font=("Arial Bold", 50)).pack()
+        self.label = tkinter.Label(self.root, text="360",font=("Arial Bold", 50))
+        self.label.pack()
 
         # текст
         self.frametxt = tkinter.Frame(self.root)
@@ -45,9 +46,13 @@ class GUIwrap:
         self.root.mainloop()
 
     def run(self, event):
-        self.guithread.start()
-        while not self.guithread.is_alive():
-            pass
+        try:
+            if not self.guithread.is_alive():
+                self.guithread.start()
+        except Exception as e:
+            self.messagequeue.put("MSG", e)
+        # while not self.guithread.is_alive():
+        #     pass
         exporter.start()
         listener.start()
 
@@ -55,16 +60,25 @@ class GUIwrap:
     def _guithread(self):
         while True:
             msg = self.messagequeue.get()
-            self.txt.insert(tkinter.INSERT, msg)
-            self.txt.insert(tkinter.INSERT, '\n')
+            keys = msg.keys()
+            if "MSG" in keys:
+                self.txt.insert(tkinter.END, msg["MSG"])
+                self.txt.insert(tkinter.END, '\n')
+            if "VAL" in keys:
+                self.label.configure(text=msg["VAL"][2])
+                self.txt.insert(tkinter.END, '\n')
+            if "ERR" in keys:
+                self.txt.insert(tkinter.END, msg["MSG"])
+                self.txt.insert(tkinter.END, '\n')
+
             self.messagequeue.task_done()
 
     def on_closing(self):
         self.messagequeue.put('Остановка...')
         listener.stop()
         exporter.stop()
-        while exporter.is_alive() or listener.is_alive():
-            pass
+        # while exporter.is_alive() or listener.is_alive():
+        #     pass
         self.root.quit()
         self.root.destroy()
 
@@ -73,8 +87,9 @@ class listenerThread(Thread):
     # Можно сделать, чтобы он принимал не одну queue, а список. и писал в каждую из них,
     # для того, чтобы можно было сделать такое же количество тредов для записи,
     # хотя это немного костыльно
-    def __init__(self, queue, msgqueue, baud=500000):
+    def __init__(self, queue, msgqueue, updateperiod=500, baud=500000):
         self.queue = queue
+        self.updateperiod = updateperiod
         self.messagequeue = msgqueue
         self._stopflag = True
         self.baud = baud  # doesn't matter for vCOM
@@ -135,8 +150,9 @@ class listenerThread(Thread):
                 try:
                     self.queue.put(data, block=True, timeout=0.5)
                     counter+=1
-                    if counter > 500:
+                    if counter > self.updateperiod:
                         self.messagequeue.put({"VAL": data})
+                        # guiwrap.label.configure(text=data[2])
                 except Full:
                     self.messagequeue.put({"ERR": "Очередь полна, что-то пошло не так! Закрыть поток!"})
                     self.stop()
@@ -155,9 +171,6 @@ class exportThread(Thread):
 
     def stop(self):
         self._stopflag = True
-
-    # def filename(self):
-    #     return self.filename()
 
 
 class exportExcelThread(exportThread):
@@ -196,7 +209,7 @@ class exportExcelThread(exportThread):
 
 q = Queue(maxsize=100000)
 msgq = Queue()
-listener = listenerThread(q, msgq)
+listener = listenerThread(q, msgq, updateperiod=400)
 exporter = exportExcelThread(q)
 guiwrap = GUIwrap(msgq)
 listener.start()
