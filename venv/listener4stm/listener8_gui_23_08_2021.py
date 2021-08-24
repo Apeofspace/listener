@@ -1,5 +1,4 @@
 from tkinter import simpledialog, scrolledtext
-
 import serial
 import serial.tools.list_ports
 from queue import Queue, Full
@@ -13,16 +12,14 @@ import tkinter
 class GUIwrap:
     def __init__(self, msgqueue, max_lines=100):
         self.messagequeue = msgqueue
-        self.max_lines=max_lines
+        self.max_lines = max_lines
         self._stopflag = False
-
+        # ткинтер
         self.root = tkinter.Tk()
         self.root.title("LIR Listener")
-
-        #лейбл
-        self.label = tkinter.Label(self.root, text="360",font=("Arial Bold", 50))
+        # лейбл
+        self.label = tkinter.Label(self.root, text="360", font=("Arial Bold", 50))
         self.label.pack()
-
         # текст
         self.frametxt = tkinter.Frame(self.root)
         self.frametxt.pack(expand=True, fill='both', side='left')
@@ -34,25 +31,23 @@ class GUIwrap:
         self.framebuttons.pack(side='right')
         self.buttonstart = tkinter.Button(self.framebuttons, text="Старт")
         self.buttonstart.pack(side='top')
-        self.buttonstart.bind('<Button-1>', self.run)
-        self.buttonstart.bind('<Return>', self.run)  # что бы ентер работал тоже
+        self.buttonstart.bind('<Button-1>', self.start)
+        self.buttonstart.bind('<Return>', self.start)  # что бы ентер работал тоже
         self.buttonstart.focus_set()
-
         # self.buttonpause = tkinter.Button(self.framebuttons, text="Пауза", command=self.pause)
         # self.buttonpause.pack(side='top')
         # self.buttonstop = tkinter.Button(self.framebuttons, text="Стоп", command=self.close)
         # self.buttonstop.pack(side='top')
         # пуск
         self.guithread = Thread(target=self._guithread, daemon=True, name='gui_thread')
-        # self.guithread.start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         # self.root.mainloop()
 
-    def run(self, event):
+    def start(self, event):
         try:
             if not self.guithread.is_alive():
                 self.guithread.start()
-                #костыльно
+                # костыльно
                 exporter.start()
                 listener.start()
         except Exception as e:
@@ -76,15 +71,14 @@ class GUIwrap:
                     if "MSG" in keys:
                         self.txt.insert(tkinter.END, msg["MSG"])
                         self.txt.insert(tkinter.END, '\n')
-                        lines+=1
+                        lines += 1
                     if "VAL" in keys:
                         self.label.configure(text=msg["VAL"][2])
-                        self.txt.insert(tkinter.END, '\n')
                     if "ERR" in keys:
                         self.txt.insert(tkinter.END, msg["ERR"])
                         self.txt.insert(tkinter.END, '\n')
-                        lines +=1
-                    if lines>self.max_lines:
+                        lines += 1
+                    if lines > self.max_lines:
                         self.txt.delete(1.0, tkinter.END)
                         lines = 0
                     self.txt.configure(state='disabled')
@@ -172,7 +166,7 @@ class listenerThread(Thread):
                         (int.from_bytes(line[2:4], "little"))]
                 try:
                     self.queue.put(data, block=True, timeout=0.5)
-                    counter+=1
+                    counter += 1
                     if counter > self.updateperiod:
                         # self.messagequeue.put({"VAL": data})
                         # костыльно
@@ -190,7 +184,6 @@ class exportThread(Thread):
         self.queue = queue
         self.messagequeue = msgq
         self._stopflag = False
-        self.filename = None
         # Start thread
         super().__init__(daemon=True, name='export_thread')
 
@@ -232,4 +225,3 @@ guiwrap = GUIwrap(msgq)
 listener = listenerThread(q, msgq, updateperiod=100)
 exporter = exportExcelThread(q, msgq)
 guiwrap.root.mainloop()
-
