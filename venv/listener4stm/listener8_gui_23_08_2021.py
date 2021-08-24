@@ -11,8 +11,10 @@ import tkinter
 
 
 class GUIwrap:
-    def __init__(self, msgqueue):
+    def __init__(self, msgqueue, max_lines=100):
         self.messagequeue = msgqueue
+        self.max_lines=max_lines
+        self._stopflag = False
 
         self.root = tkinter.Tk()
         self.root.title("LIR Listener")
@@ -26,6 +28,7 @@ class GUIwrap:
         self.frametxt.pack(expand=True, fill='both', side='left')
         self.txt = scrolledtext.ScrolledText(self.frametxt, height=20, width=100)
         self.txt.pack(fill='both', expand=True)
+        self.txt.configure(state='disabled')
         # кнопки
         self.framebuttons = tkinter.Frame(self.root)
         self.framebuttons.pack(side='right')
@@ -43,38 +46,58 @@ class GUIwrap:
         self.guithread = Thread(target=self._guithread, daemon=True, name='gui_thread')
         # self.guithread.start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.root.mainloop()
+        # self.root.mainloop()
 
     def run(self, event):
         try:
             if not self.guithread.is_alive():
                 self.guithread.start()
+                #костыльно
+                exporter.start()
+                listener.start()
         except Exception as e:
             self.messagequeue.put("MSG", e)
         # while not self.guithread.is_alive():
         #     pass
-        exporter.start()
-        listener.start()
 
+    def stop(self):
+        self._stopflag = True
 
     def _guithread(self):
+        lines = 0
         while True:
+            if self._stopflag:
+                break
             msg = self.messagequeue.get()
-            keys = msg.keys()
-            if "MSG" in keys:
-                self.txt.insert(tkinter.END, msg["MSG"])
-                self.txt.insert(tkinter.END, '\n')
-            if "VAL" in keys:
-                self.label.configure(text=msg["VAL"][2])
-                self.txt.insert(tkinter.END, '\n')
-            if "ERR" in keys:
-                self.txt.insert(tkinter.END, msg["MSG"])
-                self.txt.insert(tkinter.END, '\n')
-
-            self.messagequeue.task_done()
+            if msg is not None:
+                try:
+                    keys = msg.keys()
+                    self.txt.configure(state='normal')
+                    if "MSG" in keys:
+                        self.txt.insert(tkinter.END, msg["MSG"])
+                        self.txt.insert(tkinter.END, '\n')
+                        lines+=1
+                    if "VAL" in keys:
+                        self.label.configure(text=msg["VAL"][2])
+                        self.txt.insert(tkinter.END, '\n')
+                    if "ERR" in keys:
+                        self.txt.insert(tkinter.END, msg["ERR"])
+                        self.txt.insert(tkinter.END, '\n')
+                        lines +=1
+                    if lines>self.max_lines:
+                        self.txt.delete(1.0, tkinter.END)
+                        lines = 0
+                    self.txt.configure(state='disabled')
+                except Exception as e:
+                    self.txt.insert(tkinter.END, e)
+                    self.txt.insert(tkinter.END, '\n')
+                finally:
+                    self.txt.configure(state='disabled')
+                    self.messagequeue.task_done()
 
     def on_closing(self):
-        self.messagequeue.put('Остановка...')
+        self.messagequeue.put("MSG", 'Остановка...')
+        self.stop()
         listener.stop()
         exporter.stop()
         # while exporter.is_alive() or listener.is_alive():
@@ -100,7 +123,7 @@ class listenerThread(Thread):
                 self.ser = serial.Serial(port=p, baudrate=self.baud)
                 self.messagequeue.put({"MSG": "Подключено к: {}".format(self.ser.portstr)})
             except serial.SerialException as e:
-                self.messagequeue.put({"MSG": 'Не удалось подключиться к порту: {}\n'.format(e)})
+                self.messagequeue.put({"ERR": 'Не удалось подключиться к порту: {}\n'.format(e)})
                 return
         # Start thread
         super().__init__(daemon=True, name='listener_thread')
@@ -123,7 +146,7 @@ class listenerThread(Thread):
                                                  initialvalue=ports[0])
                 if result[0:3] == 'COM' and result[3].isdigit():
                     return result
-        self.messagequeue.put({"MSG": 'Не найдено COM'})
+        self.messagequeue.put({"ERR": 'Не найдено COM'})
         return 0
 
     def stop(self):
@@ -151,19 +174,21 @@ class listenerThread(Thread):
                     self.queue.put(data, block=True, timeout=0.5)
                     counter+=1
                     if counter > self.updateperiod:
-                        self.messagequeue.put({"VAL": data})
-                        # guiwrap.label.configure(text=data[2])
+                        # self.messagequeue.put({"VAL": data})
+                        # костыльно
+                        guiwrap.label.configure(text=data[2])
                 except Full:
                     self.messagequeue.put({"ERR": "Очередь полна, что-то пошло не так! Закрыть поток!"})
                     self.stop()
             except Exception as e:
-                self.messagequeue.put({"MSG":'Error reading/decoding line: {}'.format(e)})
+                self.messagequeue.put({"ERR": 'Error reading/decoding line: {}'.format(e)})
 
 
 class exportThread(Thread):
     # Parent class
-    def __init__(self, queue):
+    def __init__(self, queue, msgq):
         self.queue = queue
+        self.messagequeue = msgq
         self._stopflag = False
         self.filename = None
         # Start thread
@@ -174,16 +199,17 @@ class exportThread(Thread):
 
 
 class exportExcelThread(exportThread):
-    def __init__(self, queue):
+    def __init__(self, queue, msgq):
         self.filename = "Data_{}.xlsx".format(datetime.datetime.now().strftime("%Y_%m_%d-%H%M%S"))
         self.workbook = xlsxwriter.Workbook(self.filename)
         self.worksheet = self.workbook.add_worksheet()
         self.worksheet.write('A1', 'Count')
         self.worksheet.write('B1', 'Time (microseconds)')
         self.worksheet.write('C1', 'Value')
-        super().__init__(queue)
+        super().__init__(queue, msgq)
 
     def run(self):
+        self.messagequeue.put({"MSG": 'Запись в файл: {}'.format(self.filename)})
         row = 1
         while True:
             if self._stopflag:
@@ -200,26 +226,10 @@ class exportExcelThread(exportThread):
         self.workbook.close()
 
 
-# root = tk.Tk()
-# root.title("LIR listener")
-# label = tk.Label(root, text="360 00 00", font=("Arial Bold", 50)).grid()
-# txt = scrolledtext.ScrolledText(root)
-# txt.grid()
-
-
 q = Queue(maxsize=100000)
 msgq = Queue()
-listener = listenerThread(q, msgq, updateperiod=400)
-exporter = exportExcelThread(q)
 guiwrap = GUIwrap(msgq)
-listener.start()
-exporter.start()
-msgq.put({"MSG":'Запись в файл: {}'.format(exporter.filename)})
-msgq.put({"MSG":'Потоки запущены. Нажмите любую клавишу для остановки...'})
-# input()
-# msgq.put('Остановка...')
-# # print('Остановка...')
-# listener.stop()
-# exporter.stop()
-# while(exporter.is_alive() or listener.is_alive()):
-#     pass
+listener = listenerThread(q, msgq, updateperiod=100)
+exporter = exportExcelThread(q, msgq)
+guiwrap.root.mainloop()
+
