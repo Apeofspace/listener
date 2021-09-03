@@ -114,3 +114,4 @@ fabric.properties
 *.xlsx
 .testing_stuff/
 .venv/
+/venv/
